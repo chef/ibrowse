@@ -53,7 +53,7 @@
                 deleted_crlf = false, transfer_encoding,
                 chunk_size, chunk_size_buffer = <<>>,
                 recvd_chunk_size, interim_reply_sent = false,
-                lb_ets_tid, cur_pipeline_size = 0, prev_req_id
+                parent_lb, cur_pipeline_size = 0, prev_req_id
                }).
 
 -record(request, {url, method, options, from,
@@ -118,12 +118,12 @@ send_req(Conn_Pid, Url, Headers, Method, Body, Options, Timeout) ->
 %%          ignore               |
 %%          {stop, Reason}
 %%--------------------------------------------------------------------
-init({Lb_Tid, #url{host = Host, port = Port}, {SSLOptions, Is_ssl}}) ->
+init({Parent, #url{host = Host, port = Port}, {SSLOptions, Is_ssl}}) ->
     State = #state{host = Host,
                    port = Port,
                    ssl_options = SSLOptions,
                    is_ssl = Is_ssl,
-                   lb_ets_tid = Lb_Tid},
+                   parent_lb = Parent},
     put(ibrowse_trace_token, [Host, $:, integer_to_list(Port)]),
     put(my_trace_flag, ibrowse_lib:get_trace_status(Host, Port)),
     {ok, set_inac_timer(State)};
@@ -134,7 +134,8 @@ init(Url) when is_list(Url) ->
         {'EXIT', _} ->
             {error, invalid_url}
     end;
-init({Host, Port}) ->
+init({Host, Port}) when is_list(Host),
+                        is_integer(Port) ->
     State = #state{host = Host,
                    port = Port},
     put(ibrowse_trace_token, [Host, $:, integer_to_list(Port)]),
@@ -1824,37 +1825,25 @@ to_lower([H|T], Acc) ->
 to_lower([], Acc) ->
     lists:reverse(Acc).
 
-shutting_down(#state{lb_ets_tid = undefined}) ->
-    ok;
-shutting_down(#state{lb_ets_tid = Tid,
-                     cur_pipeline_size = _Sz}) ->
-    catch ets:delete(Tid, self()).
+shutting_down(_State) ->
+    ok.
 
 inc_pipeline_counter(#state{is_closing = true} = State) ->
     State;
-inc_pipeline_counter(#state{lb_ets_tid = undefined} = State) ->
+inc_pipeline_counter(#state{parent_lb = undefined} = State) ->
     State;
 inc_pipeline_counter(#state{cur_pipeline_size = Pipe_sz,
-                           lb_ets_tid = Tid} = State) ->
-    update_counter(Tid, self(), {2,1,99999,9999}),
+                            parent_lb = Pid} = State) ->
+    ibrowse_lb:increment_current(Pid, self()),
     State#state{cur_pipeline_size = Pipe_sz + 1}.
-
-update_counter(Tid, Key, Args) ->
-    ets:update_counter(Tid, Key, Args).
 
 dec_pipeline_counter(#state{is_closing = true} = State) ->
     State;
-dec_pipeline_counter(#state{lb_ets_tid = undefined} = State) ->
+dec_pipeline_counter(#state{parent_lb = undefined} = State) ->
     State;
 dec_pipeline_counter(#state{cur_pipeline_size = Pipe_sz,
-                            lb_ets_tid = Tid} = State) ->
-    try
-        update_counter(Tid, self(), {2,-1,0,0}),
-        update_counter(Tid, self(), {3,-1,0,0})
-    catch
-        _:_ ->
-            ok
-    end,
+                            parent_lb=Pid} = State) ->
+    ibrowse_lb:decrement_current_pipeline(Pid, self()),
     State#state{cur_pipeline_size = Pipe_sz - 1}.
 
 flatten([H | _] = L) when is_integer(H) ->
