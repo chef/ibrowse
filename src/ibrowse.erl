@@ -593,15 +593,15 @@ all_trace_off() ->
 %% about workers spawned using spawn_worker_process/2 or
 %% spawn_link_worker_process/2 is not included.
 show_dest_status() ->
-    io:format("~-40.40s | ~-5.5s | ~-10.10s | ~s~n",
-              ["Server:port", "ETS", "Num conns", "LB Pid"]),
-    io:format("~80.80.=s~n", [""]),
+    io:format("~-40.40s | ~-5.5s | ~-20.20s | ~s~n",
+              ["Server:port", "MBox", "Num conns", "LB Pid"]),
+    io:format("~90.90.=s~n", [""]),
     Metrics = get_metrics(),
     lists:foreach(
-      fun({Host, Port, Lb_pid, Tid, Size}) ->
-              io:format("~40.40s | ~-5.5s | ~-5.5s | ~p~n",
+      fun({Host, Port, Lb_pid, MQL, Size}) ->
+              io:format("~40.40s | ~-5.5s | ~-20.20s | ~p~n",
                         [Host ++ ":" ++ integer_to_list(Port),
-                         integer_to_list(Tid),
+                         integer_to_list(MQL),
                          integer_to_list(Size), 
                          Lb_pid])
       end, Metrics).
@@ -616,20 +616,15 @@ show_dest_status(Url) ->
 %% included.
 show_dest_status(Host, Port) ->
     case get_metrics(Host, Port) of
-        {Lb_pid, MsgQueueSize, Tid, Size,
-         {{First_p_sz, First_speculative_sz},
-          {Last_p_sz, Last_speculative_sz}}} ->
+        {Host, Port, Lb_pid, MsgQueueSize, Size} ->
             io:format("Load Balancer Pid     : ~p~n"
-                      "LB process msg q size : ~p~n"
-                      "LB ETS table id       : ~p~n"
-                      "Num Connections       : ~p~n"
-                      "Smallest pipeline     : ~p:~p~n"
-                      "Largest pipeline      : ~p:~p~n",
-                      [Lb_pid, MsgQueueSize, Tid, Size, 
-                       First_p_sz, First_speculative_sz,
-                       Last_p_sz, Last_speculative_sz]);
+                      "MBox                  : ~p~n"
+                      "Num Connections       : ~p~n",
+                      [Lb_pid, MsgQueueSize, Size]);
+        no_active_processes ->
+            io:format("No processes for destination~n");
         _Err ->
-            io:format("Metrics not available~n", [])
+            io:format("Metrics not available: ~p~n", [])
     end.
 
 get_metrics() ->
@@ -639,54 +634,19 @@ get_metrics() ->
                             (_) ->
                                  false
                          end, ets:tab2list(ibrowse_lb)),
-    All_ets = ets:all(),
-    lists:map(fun({lb_pid, {Host, Port}, Lb_pid}) ->
-                  case lists:dropwhile(
-                         fun(Tid) ->
-                                 ets:info(Tid, owner) /= Lb_pid
-                         end, All_ets) of
-                      [] ->
-                          {Host, Port, Lb_pid, unknown, 0};
-                      [Tid | _] ->
-                          Size = case catch (ets:info(Tid, size)) of
-                                     N when is_integer(N) -> N;
-                                     _ -> 0
-                                 end,
-                          {Host, Port, Lb_pid, Tid, Size}
-                  end
-              end, Dests).
+    [get_lb_metrics(Host, Port, Lb_pid) || {lb_pid, {Host, Port}, Lb_pid} <- Dests].
+
+get_lb_metrics(Host, Port, Lb_pid) ->
+    Count = ibrowse_lb:get_request_count(Lb_pid),
+    {message_queue_len, MQL} = erlang:process_info(Lb_pid, message_queue_len),
+    {Host, Port, Lb_pid, MQL, Count}.
 
 get_metrics(Host, Port) ->
     case ets:lookup(ibrowse_lb, {Host, Port}) of
         [] ->
             no_active_processes;
         [#lb_pid{pid = Lb_pid}] ->
-            MsgQueueSize = (catch process_info(Lb_pid, message_queue_len)),
-            %% {Lb_pid, MsgQueueSize,
-            case lists:dropwhile(
-                   fun(Tid) ->
-                           ets:info(Tid, owner) /= Lb_pid
-                   end, ets:all()) of
-                [] ->
-                    {Lb_pid, MsgQueueSize, unknown, 0, unknown};
-                [Tid | _] ->
-                    try
-                        Size = ets:info(Tid, size),
-                        case Size of
-                            0 ->
-                                ok;
-                            _ ->
-                                First = ets:first(Tid),
-                                Last = ets:last(Tid),
-                                [{_, First_p_sz, First_speculative_sz}] = ets:lookup(Tid, First),
-                                [{_, Last_p_sz, Last_speculative_sz}] = ets:lookup(Tid, Last),
-                                {Lb_pid, MsgQueueSize, Tid, Size,
-                                 {{First_p_sz, First_speculative_sz}, {Last_p_sz, Last_speculative_sz}}}
-                        end
-                    catch _:_ ->
-                            not_available
-                    end
-            end
+            get_lb_metrics(Host, Port, Lb_pid)
     end.
 
 %% @doc Clear current configuration for ibrowse and load from the file

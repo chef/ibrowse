@@ -237,14 +237,15 @@ dump_errors(Key, Iod) ->
 		   ]).
 
 unit_tests() ->
-    unit_tests([]).
+    unit_tests([verbose]).
 
 unit_tests(Options) ->
     application:start(crypto),
     application:start(public_key),
     application:start(ssl),
+    application:start(sasl),
+    application:start(ibrowse),
     (catch ibrowse_test_server:start_server(8181, tcp)),
-    ibrowse:start(),
     Options_1 = Options ++ [{connect_timeout, 5000}],
     Test_timeout = proplists:get_value(test_timeout, Options, 60000),
     {Pid, Ref} = erlang:spawn_monitor(?MODULE, unit_tests_1, [self(), Options_1]),
