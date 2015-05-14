@@ -1,7 +1,13 @@
+%% -*- mode: erlang;erlang-indent-level: 4;indent-tabs-mode: nil -*-
+%% ex: ts=4 sw=4 ft=erlang et
 {application, ibrowse,
         [{description, "Erlang HTTP client application"},
          {vsn, "4.0.1.1"},
          {registered, [ibrowse_sup, ibrowse]},
-         {applications, [kernel,stdlib]},
+         {applications, [
+                         kernel,
+                         stdlib,
+                         pooler
+                        ]},
 	 {env, []},
 	 {mod, {ibrowse_app, []}}]}.

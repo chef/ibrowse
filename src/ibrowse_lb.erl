@@ -1,7 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% File    : ibrowse_lb.erl
 %%% Author  : chandru <chandrashekhar.mullaparthi@t-mobile.co.uk>
-%%% Description : 
+%%% Description :
 %%%
 %%% Created :  6 Mar 2008 by chandru <chandrashekhar.mullaparthi@t-mobile.co.uk>
 %%%-------------------------------------------------------------------
@@ -35,7 +35,7 @@
 	]).
 
 -record(state, {parent_pid,
-        active=dict:new(),
+                active=dict:new(),
 		host,
 		port,
 		max_sessions,
