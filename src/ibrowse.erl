@@ -623,8 +623,8 @@ show_dest_status(Host, Port) ->
                       [Lb_pid, MsgQueueSize, Size]);
         no_active_processes ->
             io:format("No processes for destination~n");
-        _Err ->
-            io:format("Metrics not available: ~p~n", [])
+        Err ->
+            io:format("Metrics not available: ~p~n", [Err])
     end.
 
 get_metrics() ->
