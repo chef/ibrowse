@@ -287,6 +287,8 @@ handle_sock_data(Data, #state{status = get_header}=State) ->
         {error, _Reason} ->
             shutting_down(State),
             {stop, normal, State};
+        #state{is_closing = true} ->
+            {stop, normal, State};
         #state{socket = Socket, status = Status, cur_req = CurReq} = State_1 ->
             case {Status, CurReq} of
                 {get_header, #request{caller_controls_socket = true}} ->
