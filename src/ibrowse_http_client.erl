@@ -26,6 +26,10 @@
 -compile(export_all).
 -endif.
 
+-ifdef(TEST).
+-compile(export_all).
+-endif.
+
 %% gen_server callbacks
 -export([
          init/1,
