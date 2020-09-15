@@ -390,6 +390,7 @@ try_routing_request(Lb_pid, Parsed_url,
                     %% io:format("~p -- Time_remaining: ~p (~p%)~n", [self(), Time_remaining, Time_remaining_percent]),
                     case (Time_remaining > 0) andalso (Time_remaining_percent >= 5) of
                         true ->
+                            io:format("retrying try_routing_request on sel_conn_closed~n"),
                             try_routing_request(Lb_pid, Parsed_url,
                                                 Max_sessions, 
                                                 Max_pipeline_size,
@@ -397,6 +398,7 @@ try_routing_request(Lb_pid, Parsed_url,
                                                 Headers, Method, Body, Options_1,
                                                 Time_remaining, Ori_timeout, Req_start_time, Max_attempts, Try_count + 1);
                         false ->
+                            io:format("retry_later from try_routing_request because time expired~n", []),
                             {error, retry_later}
                     end;
                 Res ->
@@ -406,6 +408,7 @@ try_routing_request(Lb_pid, Parsed_url,
             Err
     end;
 try_routing_request(_, _, _, _, _, _, _, _, _, _, _, _, _, _) ->
+    io:format("retry_later from try_routing_request because max attempts reached~n", []),
     {error, retry_later}.
 
 merge_options(Host, Port, Options) ->

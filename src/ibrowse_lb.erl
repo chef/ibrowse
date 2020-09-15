@@ -222,6 +222,7 @@ find_best_connection(Tid, Max_pipe) ->
 	    ets:insert(Tid, {{Spec_size + 1, Ts, Pid}, []}),
 	    {ok, First};
         _ ->
+            io:format("retry_later from find_best_connection(~p, ~p)~n", [Tid, Max_pipe]),
             {error, retry_later}
     end.
 
