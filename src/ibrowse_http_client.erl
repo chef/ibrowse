@@ -661,6 +661,11 @@ do_send_body({Source}, State, TE) when is_function(Source) ->
 do_send_body({Source, Source_state}, State, TE) when is_function(Source) ->
     do_send_body_1(generate_body({Source, Source_state}),
                    State, TE, []);
+%% If we don't have a body, we avoid sending anything as the other
+%% side may have already closed the connection in the case of
+%% non-keepalive connections.
+do_send_body([] = Body, _, _)  ->  {ok, Body};
+do_send_body(<<>> = Body, _, _)  ->  {ok, Body};
 do_send_body(Body, State, _TE) ->
     case do_send(Body, State) of
         ok ->
