@@ -141,9 +141,13 @@ init({Lb_Tid, #url{host = Host, port = Port}, {SSLOptions, Is_ssl}}) ->
                    lb_ets_tid = Lb_Tid},
     put(ibrowse_trace_token, [Host, $:, integer_to_list(Port)]),
     put(my_trace_flag, ibrowse_lib:get_trace_status(Host, Port)),
+    TraceFlag = envy:get(ibrowse, enable_ibrowse_traces, false, boolean),
+    put(my_trace_flag, TraceFlag),
     {ok, set_inac_timer(State)};
 init(Url) when is_list(Url) ->
     process_flag(trap_exit, true),
+    TraceFlag = envy:get(ibrowse, enable_ibrowse_traces, false, boolean),
+    put(my_trace_flag, TraceFlag),
     case catch ibrowse_lib:parse_url(Url) of
         #url{protocol = Protocol} = Url_rec ->
             init({undefined, Url_rec, {[], Protocol == https}});
@@ -573,10 +577,13 @@ do_connect(Host, Port, Options, #state{is_ssl      = true,
            Timeout) ->
     %% if a socks5 proxy is configured, open the socket separately
     %% before upgrading the socket to a TLS connection.
+    %% Extract SSL options from request Options and merge with state SSL options
+    RequestSSLOptions = get_value(ssl_opts, Options, []),
+    MergedSSLOptions = RequestSSLOptions ++ SSLOptions,
     case get_value(socks5_host, Options, undefined) of
         %% no socks5 proxy is configured, connect directly with TLS:
         undefined ->
-            Sock_options = get_sock_options(Host, Options, SSLOptions),
+            Sock_options = get_sock_options(Host, Options, MergedSSLOptions),
             ssl:connect(Host, Port, Sock_options, Timeout);
 
         %% proxy configuration is present: first establish a socket
@@ -587,7 +594,7 @@ do_connect(Host, Port, Options, #state{is_ssl      = true,
                                           Sock_options, Timeout),
             case Conn of
                 {ok, Sock} ->
-                    ssl:connect(Sock, SSLOptions, Timeout);
+                    ssl:connect(Sock, MergedSSLOptions, Timeout);
                 _ ->
                     error
             end
@@ -661,6 +668,11 @@ do_send_body({Source}, State, TE) when is_function(Source) ->
 do_send_body({Source, Source_state}, State, TE) when is_function(Source) ->
     do_send_body_1(generate_body({Source, Source_state}),
                    State, TE, []);
+%% If we don't have a body, we avoid sending anything as the other
+%% side may have already closed the connection in the case of
+%% non-keepalive connections.
+do_send_body([] = Body, _, _)  ->  {ok, Body};
+do_send_body(<<>> = Body, _, _)  ->  {ok, Body};
 do_send_body(Body, State, _TE) ->
     case do_send(Body, State) of
         ok ->
