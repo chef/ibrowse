@@ -222,8 +222,8 @@ spawn_workers(Url, NumWorkers, NumReqsPerWorker) ->
 do_wait(Url) ->
     receive
 	{'EXIT', _, normal} ->
-            catch ibrowse:show_dest_status(Url),
-            catch ibrowse:show_dest_status(),
+            try ibrowse:show_dest_status(Url) catch _:_ -> ok end,
+            try ibrowse:show_dest_status() catch _:_ -> ok end,
 	    do_wait(Url);
 	{'EXIT', Pid, Reason} ->
 	    ets:delete(pid_table, Pid),
@@ -238,8 +238,8 @@ do_wait(Url) ->
 		0 ->
 		    done;
 		_ ->
-                    catch ibrowse:show_dest_status(Url),
-                    catch ibrowse:show_dest_status(),
+                    try ibrowse:show_dest_status(Url) catch _:_ -> ok end,
+                    try ibrowse:show_dest_status() catch _:_ -> ok end,
 		    do_wait(Url)
 	    end
     end.
@@ -310,7 +310,7 @@ unit_tests(Options, Test_list) ->
     application:start(asn1),
     application:start(public_key),
     application:start(ssl),
-    (catch ibrowse_test_server:start_server(8181, tcp)),
+    try ibrowse_test_server:start_server(8181, tcp) catch _:_ -> ok end,
     application:start(ibrowse),
     Options_1 = Options ++ [{connect_timeout, 5000}],
     Test_timeout = proplists:get_value(test_timeout, Options, 60000),
@@ -324,7 +324,7 @@ unit_tests(Options, Test_list) ->
 	    exit(Pid, kill),
 	    io:format("Timed out waiting for tests to complete~n", [])
     end,
-    catch ibrowse_test_server:stop_server(8181),
+    try ibrowse_test_server:stop_server(8181) catch _:_ -> ok end,
     error_logger:tty(true),
     ok.
 
@@ -488,12 +488,12 @@ maybe_stream_next(Req_id, Options) ->
 
 execute_req(local_test_fun, Method, Args) ->
     reset_ibrowse(),
-    Result = (catch apply(?MODULE, Method, Args)),
+    Result = ibrowse_lib:catch_result(fun() -> apply(?MODULE, Method, Args) end),
     io:format("     ~-54.54w: ", [Method]),
     io:format("~p~n", [Result]);
 execute_req(Url, Method, Options) ->
     io:format("~7.7w, ~50.50s: ", [Method, Url]),
-    Result = (catch ibrowse:send_req(Url, [], Method, [], Options)),
+    Result = ibrowse_lib:catch_result(fun() -> ibrowse:send_req(Url, [], Method, [], Options) end),
     case Result of
 	{ok, SCode, _H, _B} ->
 	    io:format("Status code: ~p~n", [SCode]);
@@ -688,7 +688,7 @@ test_retry_of_requests(Url, Timeout) ->
     Parent = self(),
     Pids = lists:map(fun(_) ->
                         spawn(fun() ->
-                                 Res = (catch ibrowse:send_req(Url, [], get, [], [], Timeout)),
+                                 Res = ibrowse_lib:catch_result(fun() -> ibrowse:send_req(Url, [], get, [], [], Timeout) end),
                                  Parent ! {self(), Res}
                               end)
                      end, lists:seq(1,10)),

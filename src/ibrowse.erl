@@ -142,7 +142,7 @@ start() ->
 
 %% @doc Stop the ibrowse process. Useful when testing using the shell.
 stop() ->
-    case catch gen_server:call(ibrowse, stop) of
+    case ibrowse_lib:catch_result(fun() -> gen_server:call(ibrowse, stop) end) of
         {'EXIT',{noproc,_}} ->
             ok;
         Res ->
@@ -338,7 +338,7 @@ send_req(Url, Headers, Method, Body, Options) ->
 %% @spec send_req(Url, Headers::headerList(), Method::method(), Body::body(), Options::optionList(), Timeout) -> response()
 %% Timeout = integer() | infinity
 send_req(Url, Headers, Method, Body, Options, Timeout) ->
-    case catch parse_url(Url) of
+    case ibrowse_lib:catch_result(fun() -> parse_url(Url) end) of
         #url{host = Host,
              port = Port,
              protocol = Protocol} = Parsed_url ->
@@ -488,11 +488,14 @@ set_max_attempts(Host, Port, Max) when is_integer(Max), Max > 0 ->
     gen_server:call(?MODULE, {set_config_value, {max_attempts, Host, Port}, Max}).
 
 do_send_req(Conn_Pid, Parsed_url, Headers, Method, Body, Options, Timeout) ->
-    case catch ibrowse_http_client:send_req(Conn_Pid, Parsed_url,
-                                            Headers, Method, ensure_bin(Body),
-                                            Options, Timeout) of
+    case ibrowse_lib:catch_result(
+           fun() ->
+                   ibrowse_http_client:send_req(Conn_Pid, Parsed_url,
+                                                Headers, Method, ensure_bin(Body),
+                                                Options, Timeout)
+           end) of
         {'EXIT', {timeout, _}} ->
-            P_info = case catch erlang:process_info(Conn_Pid, [messages, message_queue_len, backtrace]) of
+            P_info = case ibrowse_lib:catch_result(fun() -> erlang:process_info(Conn_Pid, [messages, message_queue_len, backtrace]) end) of
                             [_|_] = Conn_Pid_info_list ->
                                 Conn_Pid_info_list;
                             _ ->
@@ -605,7 +608,7 @@ send_req_direct(Conn_pid, Url, Headers, Method, Body, Options) ->
 %% @doc Same as send_req/6 except that the first argument is the PID
 %% returned by spawn_worker_process/2 or spawn_link_worker_process/2
 send_req_direct(Conn_pid, Url, Headers, Method, Body, Options, Timeout) ->
-    case catch parse_url(Url) of
+    case ibrowse_lib:catch_result(fun() -> parse_url(Url) end) of
         #url{host = Host,
              port = Port} = Parsed_url ->
             Options_1 = merge_options(Host, Port, Options),
@@ -628,7 +631,7 @@ stream_next(Req_id) ->
         [] ->
             {error, unknown_req_id};
         [{_, Pid}] ->
-            catch Pid ! {stream_next, Req_id},
+            try Pid ! {stream_next, Req_id} catch _:_ -> ok end,
             ok
     end.
 
@@ -643,7 +646,7 @@ stream_close(Req_id) ->
         [] ->
             {error, unknown_req_id};
         [{_, Pid}] ->
-            catch Pid ! {stream_close, Req_id},
+            try Pid ! {stream_close, Req_id} catch _:_ -> ok end,
             ok
     end.
 
@@ -758,7 +761,7 @@ get_metrics(Host, Port) ->
         [] ->
             no_active_processes;
         [#lb_pid{pid = Lb_pid, ets_tid = Tid}] ->
-            MsgQueueSize = case (catch process_info(Lb_pid, message_queue_len)) of
+            MsgQueueSize = case ibrowse_lib:catch_result(fun() -> process_info(Lb_pid, message_queue_len) end) of
 			       {message_queue_len, Msg_q_len} ->
 				   Msg_q_len;
 			       _ ->
@@ -925,19 +928,19 @@ handle_call({set_config_value, Key, Val}, _From, State) ->
     {reply, ok, State};
 
 handle_call(rescan_config, _From, State) ->
-    Ret = (catch import_config()),
+    Ret = ibrowse_lib:catch_result(fun() -> import_config() end),
     {reply, Ret, State};
 
 handle_call({rescan_config, File}, _From, State) ->
-    Ret = (catch import_config(File)),
+    Ret = ibrowse_lib:catch_result(fun() -> import_config(File) end),
     {reply, Ret, State};
 
 handle_call({rescan_config_terms, Terms}, _From, State) ->
-    Ret = (catch apply_config(Terms)),
+    Ret = ibrowse_lib:catch_result(fun() -> apply_config(Terms) end),
     {reply, Ret, State};
 
 handle_call({add_config_terms, Terms}, _From, State) ->
-    Ret = (catch insert_config(Terms)),
+    Ret = ibrowse_lib:catch_result(fun() -> insert_config(Terms) end),
     {reply, Ret, State};
 
 handle_call(Request, _From, State) ->
@@ -970,7 +973,7 @@ handle_info(all_trace_off, State) ->
                       false ->
                           ok;
                       true ->
-                          catch Pid ! {trace, false}
+                          try Pid ! {trace, false} catch _:_ -> ok end
                   end;
              (_, Acc) ->
                   Acc
@@ -987,7 +990,7 @@ handle_info({trace, Bool, Host, Port}, State) ->
     Fun = fun(#lb_pid{host_port = {H, P}, pid = Pid}, _)
              when H == Host,
                   P == Port ->
-                  catch Pid ! {trace, Bool};
+                  try Pid ! {trace, Bool} catch _:_ -> ok end;
              (_, Acc) ->
                   Acc
           end,

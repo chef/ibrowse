@@ -57,7 +57,7 @@ start_server(Port, Sock_type) ->
     ibrowse_socks_server:start(8383, 2). %% Username/Password auth
 
 stop_server(Port) ->
-    catch server_proc_name(Port) ! stop,
+    try server_proc_name(Port) ! stop catch _:_ -> ok end,
     ibrowse_socks_server:stop(8282),
     ibrowse_socks_server:stop(8383),
     timer:sleep(2000),  % wait for server to receive msg and unregister
@@ -99,12 +99,12 @@ accept_loop(Sock, Sock_type) ->
     end.
 
 connection(Conn, Sock_type) ->
-    catch ets:insert(?CONN_PIPELINE_DEPTH, {self(), 0}),
+    try ets:insert(?CONN_PIPELINE_DEPTH, {self(), 0}) catch _:_ -> ok end,
     try
 	inet:setopts(Conn, [{packet, http}, {active, true}]),
         server_loop(Conn, Sock_type, #request{})
     after
-        catch ets:delete(?CONN_PIPELINE_DEPTH, self())
+        try ets:delete(?CONN_PIPELINE_DEPTH, self()) catch _:_ -> ok end
     end.
 
 set_controlling_process(Sock, tcp, Pid) ->
@@ -120,7 +120,7 @@ setopts(Sock, ssl, Opts) ->
 server_loop(Sock, Sock_type, #request{headers = Headers} = Req) ->
     receive
         {http, Sock, {http_request, HttpMethod, HttpUri, HttpVersion}} ->
-            catch ets:update_counter(?CONN_PIPELINE_DEPTH, self(), 1),
+            try ets:update_counter(?CONN_PIPELINE_DEPTH, self(), 1) catch _:_ -> ok end,
             server_loop(Sock, Sock_type, Req#request{method = HttpMethod,
                                                      uri = HttpUri,
                                                      version = HttpVersion});
@@ -135,7 +135,7 @@ server_loop(Sock, Sock_type, #request{headers = Headers} = Req) ->
 		collect_body ->
 		    server_loop(Sock, Sock_type, Req#request{state = collect_body});
                 _ ->
-                    catch ets:update_counter(?CONN_PIPELINE_DEPTH, self(), -1)
+                    try ets:update_counter(?CONN_PIPELINE_DEPTH, self(), -1) catch _:_ -> ok end
             end,
             server_loop(Sock, Sock_type, #request{});
         {http, Sock, {http_error, Packet}} when Req#request.state == collect_body ->

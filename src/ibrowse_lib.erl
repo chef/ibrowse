@@ -30,7 +30,8 @@
          get_value/3,
          parse_url/1,
          printable_date/0,
-         printable_date/1
+         printable_date/1,
+         catch_result/1
         ]).
 
 get_trace_status(Host, Port) ->
@@ -62,7 +63,7 @@ d2h(N) when N<10 -> N+$0;
 d2h(N) -> N+$a-10.
 
 decode_rfc822_date(String) when is_list(String) ->
-    case catch decode_rfc822_date_1(string:tokens(String, ", \t\r\n")) of
+    case catch_result(fun() -> decode_rfc822_date_1(string:tokens(String, ", \t\r\n")) end) of
         {'EXIT', _} ->
             {error, invalid_date};
         Res ->
@@ -422,7 +423,19 @@ log_msg(Fmt, Args) ->
     end.
 
 log_msg(M, F, Fmt, Args) ->
-    catch apply(M, F, [Fmt, Args]).
+    catch_result(fun() -> apply(M, F, [Fmt, Args]) end).
+
+%% @doc Evaluates Fun() and returns exactly what the old-style
+%% `catch Expr' (deprecated in OTP 29) would have returned: the value on
+%% success, the thrown term for a throw, and `{'EXIT', Reason}' otherwise.
+-spec catch_result(fun(() -> term())) -> term().
+catch_result(Fun) ->
+    try Fun()
+    catch
+        throw:Thrown -> Thrown;
+        error:Reason:Stacktrace -> {'EXIT', {Reason, Stacktrace}};
+        exit:Reason -> {'EXIT', Reason}
+    end.
 
 -ifdef(EUNIT).
 

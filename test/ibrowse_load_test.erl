@@ -47,7 +47,7 @@ start_1(Num_workers, Num_requests, Max_sess) ->
     application:start(ibrowse),
     application:set_env(ibrowse, inactivity_timeout, 5000),
     Ulimit = os:cmd("ulimit -n"),
-    case catch list_to_integer(string:strip(Ulimit, right, $\n)) of
+    case ibrowse_lib:catch_result(fun() -> list_to_integer(string:strip(Ulimit, right, $\n)) end) of
         X when is_integer(X), X > 3000 ->
             ok;
         X ->
@@ -124,7 +124,7 @@ spawn_workers(0, _Num_requests, _Parent, Acc) ->
 spawn_workers(Num_workers, Num_requests, Parent, Acc) ->
     Pid_ref = spawn_monitor(fun() ->
                                     random_seed(),
-                                    case catch worker_loop(Parent, Num_requests) of
+                                    case ibrowse_lib:catch_result(fun() -> worker_loop(Parent, Num_requests) end) of
                                         {'EXIT', Rsn} ->
                                             io:format("Worker crashed with reason: ~p~n", [Rsn]);
                                         _ ->
@@ -200,7 +200,7 @@ worker_loop(Parent, N) ->
     worker_loop(Parent, N - 1).
 
 update_unknown_counter(Counter, Inc_val) ->
-    case catch ets:update_counter(?ibrowse_load_test_counters, Counter, Inc_val) of
+    case ibrowse_lib:catch_result(fun() -> ets:update_counter(?ibrowse_load_test_counters, Counter, Inc_val) end) of
         {'EXIT', _} ->
             ets:insert_new(?ibrowse_load_test_counters, {Counter, 0}),
             update_unknown_counter(Counter, Inc_val);

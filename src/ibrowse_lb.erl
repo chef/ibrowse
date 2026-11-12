@@ -90,7 +90,7 @@ spawn_connection(Lb_pid, Url,
 		    {spawn_connection, Url, Max_sessions, Max_pipeline_size, SSL_options, Process_options}).
 
 stop(Lb_pid) ->
-    case catch gen_server:call(Lb_pid, stop) of
+    case ibrowse_lib:catch_result(fun() -> gen_server:call(Lb_pid, stop) end) of
         {'EXIT', {timeout, _}} ->
             exit(Lb_pid, kill);
         ok ->
@@ -165,7 +165,7 @@ handle_info({trace, Bool}, #state{ets_tid = undefined} = State) ->
 
 handle_info({trace, Bool}, #state{ets_tid = Tid} = State) ->
     ets:foldl(fun({{_, Pid}, _}, Acc) when is_pid(Pid) ->
-		      catch Pid ! {trace, Bool},
+		      try Pid ! {trace, Bool} catch _:_ -> ok end,
 		      Acc;
 		 (_, Acc) ->
 		      Acc
@@ -194,7 +194,7 @@ handle_info(_Info, State) ->
 %% Returns: any (ignored by gen_server)
 %%--------------------------------------------------------------------
 terminate(_Reason, #state{host = Host, port = Port, ets_tid = Tid} = _State) ->
-    catch ets:delete(ibrowse_lb, {Host, Port}),
+    try ets:delete(ibrowse_lb, {Host, Port}) catch _:_ -> ok end,
     stop_all_conn_procs(Tid),
     ok.
 
